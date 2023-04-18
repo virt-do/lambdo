@@ -21,6 +21,9 @@ struct Args {
     #[arg(long, default_value = "./agent")]
     agent: String,
 
+    #[arg(long, default_value = "./config.yaml")]
+    agent_config: String,
+
     #[arg(
         short,
         long,
@@ -53,9 +56,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let image = registry.get_image(&args.image).await?;
     info!("Download done!");
 
-    info!("Writing  to disk ...");
+    info!("Writing to disk ...");
     image
-        .export_to_initramfs(&args.init, &args.agent)
+        .export_to_initramfs(&args.init, &args.agent, &args.agent_config)
         .map_err(|e| anyhow!(e).context("Failed to write filesystem to disk"))?;
     info!("Writing done!");
 

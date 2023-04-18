@@ -2,7 +2,6 @@ use std::{
     collections::HashMap,
     fs::File,
     io::{Cursor, Read},
-    os::unix::fs::PermissionsExt,
 };
 
 use anyhow::{anyhow, Result};
@@ -12,6 +11,8 @@ use libflate::gzip::{Decoder, Encoder};
 use log::debug;
 use serde::Deserialize;
 use tar::Archive;
+
+const EXECUTABLE_FILE_MODE: u32 = 0o100755;
 
 #[derive(Deserialize, Debug, Clone)]
 #[allow(non_snake_case)]
@@ -62,7 +63,12 @@ impl Image {
         &self.tag
     }
 
-    pub fn export_to_initramfs(&self, init_path: &str, agent_path: &str) -> Result<()> {
+    pub fn export_to_initramfs(
+        &self,
+        init_path: &str,
+        agent_path: &str,
+        agent_config_path: &str,
+    ) -> Result<()> {
         // Write the cpio to disk
         let file_name = format!("initramfs-{}-{}.img", self.name.replace('/', "-"), self.tag);
         let archive = Encoder::new(
@@ -126,28 +132,36 @@ impl Image {
             File::open(init_path).map_err(|e| anyhow!(e).context("Failed to open init file"))?;
         let mut agent_file =
             File::open(agent_path).map_err(|e| anyhow!(e).context("Failed to open init file"))?;
+        let mut agent_config_file = File::open(agent_config_path)
+            .map_err(|e| anyhow!(e).context("Failed to open agent config file"))?;
 
         let mut init_content = Vec::new();
         let mut agent_content = Vec::new();
+        let mut agent_config_content = Vec::new();
 
         init_file.read_to_end(&mut init_content)?;
         agent_file.read_to_end(&mut agent_content)?;
-
-        let init_mode = init_file.metadata()?.permissions().mode();
-        let agent_mode = agent_file.metadata()?.permissions().mode();
+        agent_config_file.read_to_end(&mut agent_config_content)?;
 
         entries.insert(
             "init".to_string(),
             (
-                Builder::new("init").mode(init_mode),
+                Builder::new("init").mode(EXECUTABLE_FILE_MODE),
                 Cursor::new(init_content),
             ),
         );
         entries.insert(
             "agent".to_string(),
             (
-                Builder::new("agent").mode(agent_mode),
+                Builder::new("agent").mode(EXECUTABLE_FILE_MODE),
                 Cursor::new(agent_content),
+            ),
+        );
+        entries.insert(
+            "config.yaml".to_string(),
+            (
+                Builder::new("config.yaml").mode(EXECUTABLE_FILE_MODE),
+                Cursor::new(agent_config_content),
             ),
         );
 
